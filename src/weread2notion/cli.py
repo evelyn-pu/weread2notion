@@ -796,6 +796,43 @@ def sync():
     print(f"Notion API Version: {NOTION_VERSION}")
     print(f"Notion Data Source ID: {data_source_id}")
     load_data_source_schema()
+    # Shelf-only entries must not advance the notebook sync cursor.
+    shelf = weread.request("/shelf/sync")
+    shelf_books = shelf.get("books")
+    if not isinstance(shelf_books, list):
+        raise ValueError("书架接口未返回 books 列表，停止导入以免误报成功")
+    added = 0
+    seen = set()
+    for book in shelf_books:
+        if book.get("finishReading") != 1 or not book.get("bookId"):
+            continue
+        book_id = str(book["bookId"])
+        if book_id in seen:
+            continue
+        seen.add(book_id)
+        existing = query_data_source(filter=build_equals_filter("BookId", book_id))
+        if existing.get("results"):
+            continue
+        if not book.get("title"):
+            raise ValueError("已读书籍缺少书名，停止导入")
+        values = {
+            title_property_name: book["title"], "BookId": book_id,
+            "作者": book.get("author") or "", "状态": "读完", "Sort": 0,
+        }
+        link = book.get("readerLink") or book.get("deepLink")
+        if link:
+            values["链接"] = link
+        page = {
+            "parent": {"type": "data_source_id", "data_source_id": data_source_id},
+            "properties": build_notion_properties(values),
+        }
+        cover = book.get("cover") or ""
+        if cover.startswith("https://") or cover.startswith("http://"):
+            page.update(icon=get_icon(cover), cover=get_icon(cover))
+        client.pages.create(**page)
+        added += 1
+        time.sleep(0.35)
+    print(f"已读书架检查完成：发现 {len(seen)} 本已读书籍，新增 {added} 本")
     latest_sort = get_sort()
     books = get_notebooklist()
     if books != None:
