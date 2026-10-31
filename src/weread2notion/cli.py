@@ -796,6 +796,8 @@ def sync():
     print(f"Notion API Version: {NOTION_VERSION}")
     print(f"Notion Data Source ID: {data_source_id}")
     load_data_source_schema()
+    from .dashboard import sync_dashboard
+    sync_dashboard(weread, client)
     # Shelf-only entries must not advance the notebook sync cursor.
     shelf = weread.request("/shelf/sync")
     shelf_books = shelf.get("books")
